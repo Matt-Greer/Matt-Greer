@@ -176,11 +176,11 @@ Public Sub RunLevelingCapCeilingEven10_Fixed()
 
     Dim arrSpec() As tTroop, arrGuard() As tTroop
     Dim arrMonster() As tTroop, arrMerc() As tTroop
+    Dim arrLeadership() As tTroop
     Dim iSpec As Long, iGuard As Long, iMonster As Long, iMerc As Long
+    Dim iLeadership As Long
 
-    Dim dHSpec As Double, dHGuard As Double, dHMonster As Double, dHMerc As Double
-    Dim dUsedSpec As Double
-    Dim dRemainingL As Double
+    Dim dHLeadership As Double, dHMonster As Double, dHMerc As Double
 
     Dim dUsedL_pre As Double, dUsedD_pre As Double, dUsedA_pre As Double
     Dim dUsedL_post As Double, dUsedD_post As Double, dUsedA_post As Double
@@ -240,6 +240,12 @@ Public Sub RunLevelingCapCeilingEven10_Fixed()
                         arrSpec(iSpec).dHealth = dHealth
                         arrSpec(iSpec).dCost = dLc
                         arrSpec(iSpec).iRow = iIndex
+
+                        iLeadership = iLeadership + 1
+                        ReDim Preserve arrLeadership(1 To iLeadership)
+                        arrLeadership(iLeadership).dHealth = dHealth
+                        arrLeadership(iLeadership).dCost = dLc
+                        arrLeadership(iLeadership).iRow = iIndex
                     End If
                 Case "GUARDSMAN"
                     If dLc > 0 Then
@@ -248,6 +254,12 @@ Public Sub RunLevelingCapCeilingEven10_Fixed()
                         arrGuard(iGuard).dHealth = dHealth
                         arrGuard(iGuard).dCost = dLc
                         arrGuard(iGuard).iRow = iIndex
+
+                        iLeadership = iLeadership + 1
+                        ReDim Preserve arrLeadership(1 To iLeadership)
+                        arrLeadership(iLeadership).dHealth = dHealth
+                        arrLeadership(iLeadership).dCost = dLc
+                        arrLeadership(iLeadership).iRow = iIndex
                     End If
                 Case "MONSTER"
                     If dDc > 0 Then
@@ -264,24 +276,21 @@ Public Sub RunLevelingCapCeilingEven10_Fixed()
                         arrGuard(iGuard).dHealth = dHealth
                         arrGuard(iGuard).dCost = dLc
                         arrGuard(iGuard).iRow = iIndex
+
+                        iLeadership = iLeadership + 1
+                        ReDim Preserve arrLeadership(1 To iLeadership)
+                        arrLeadership(iLeadership).dHealth = dHealth
+                        arrLeadership(iLeadership).dCost = dLc
+                        arrLeadership(iLeadership).iRow = iIndex
                     End If
             End Select
 
         End If
     Next iIndex
 
-    If iSpec > 0 Then
-        dHSpec = FindLeadershipH(arrSpec, iSpec, dLcap)
-        AllocateLeadership arrSpec, iSpec, dLcap, arrUnits, dHSpec
-        dUsedSpec = ComputeUsedCost(arrSpec, iSpec, arrUnits)
-    End If
-
-    dRemainingL = dLcap - dUsedSpec
-    If dRemainingL < 0 Then dRemainingL = 0
-
-    If iGuard > 0 And dRemainingL > 0 Then
-        dHGuard = FindLeadershipH(arrGuard, iGuard, dRemainingL)
-        AllocateLeadership arrGuard, iGuard, dRemainingL, arrUnits, dHGuard
+    If iLeadership > 0 Then
+        dHLeadership = FindLeadershipH(arrLeadership, iLeadership, dLcap)
+        AllocateLeadership arrLeadership, iLeadership, dLcap, arrUnits, dHLeadership
     End If
 
     If iMonster > 0 Then
@@ -308,12 +317,12 @@ Public Sub RunLevelingCapCeilingEven10_Fixed()
 
     If bApplyRounding Then
         For iIndex = 1 To iRows
-            If arrUnits(iIndex) = 0 Then
-                arrUnits(iIndex) = 1
-            Else
+            If arrUnits(iIndex) > 0 Then
                 Dim iRounded As Long
                 iRounded = (arrUnits(iIndex) \ 10) * 10
-                If iRounded >= 10 Then
+                If iRounded < 10 Then
+                    arrUnits(iIndex) = 10
+                Else
                     arrUnits(iIndex) = iRounded
                 End If
             End If
@@ -348,6 +357,6 @@ Public Sub RunLevelingCapCeilingEven10_Fixed()
     '        "   (Lost " & Format(dLostD, "0.00") & "%)" & vbCrLf & _
     '        "Authority used:  " & Format(dUsedA_pre, "#,##0") & " -> " & Format(dUsedA_post, "#,##0") & _
     '        "   (Lost " & Format(dLostA, "0.00") & "%)" & vbCrLf & vbCrLf & _
-    '        "H* (Spec/Guard/Monster/Merc): " & Format(dHSpec, "#,##0") & " / " & _
-    '        Format(dHGuard, "#,##0") & " / " & Format(dHMonster, "#,##0") & " / " & Format(dHMerc, "#,##0"), vbInformation
+    '        "H* (Leadership/Dominance/Authority): " & Format(dHLeadership, "#,##0") & " / " & _
+    '        Format(dHMonster, "#,##0") & " / " & Format(dHMerc, "#,##0"), vbInformation
 End Sub
