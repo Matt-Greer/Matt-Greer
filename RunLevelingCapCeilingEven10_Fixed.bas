@@ -22,7 +22,7 @@ End Function
 ' Function: Find maximum target health H*
 ' using binary search for a troop group
 ' ============================================
-Private Function FindLeadershipH(arrTroops() As tTroop, iCount As Long, dCap As Double) As Double
+Private Function FindLeadershipH(arrTroops() As tTroop, arrBase() As Long, iCount As Long, dCap As Double) As Double
     Dim dLow As Double
     Dim dHigh As Double
     Dim dMid As Double
@@ -52,7 +52,11 @@ Private Function FindLeadershipH(arrTroops() As tTroop, iCount As Long, dCap As 
         Dim iLoop As Long
         For iLoop = 1 To iCount
             If arrTroops(iLoop).dHealth > 0 Then
-                dUsed = dUsed + CLng(Fix(dMid / arrTroops(iLoop).dHealth)) * arrTroops(iLoop).dCost
+                Dim lNeeded As Long
+                lNeeded = CLng(Fix(dMid / arrTroops(iLoop).dHealth))
+                If lNeeded > arrBase(arrTroops(iLoop).iRow) Then
+                    dUsed = dUsed + (lNeeded - arrBase(arrTroops(iLoop).iRow)) * arrTroops(iLoop).dCost
+                End If
             End If
         Next iLoop
 
@@ -69,16 +73,22 @@ End Function
 ' ============================================
 ' Allocate units for a troop group
 ' ============================================
-Private Sub AllocateLeadership(arrTroops() As tTroop, iCount As Long, dCap As Double, arrUnits() As Long, dHstar As Double)
+Private Sub AllocateLeadership(arrTroops() As tTroop, arrBase() As Long, iCount As Long, arrUnits() As Long, dHstar As Double)
     Dim iIndex As Long
 
     If iCount = 0 Or dHstar <= 0 Then Exit Sub
 
     For iIndex = 1 To iCount
         If arrTroops(iIndex).dHealth > 0 Then
-            arrUnits(arrTroops(iIndex).iRow) = CLng(Fix(dHstar / arrTroops(iIndex).dHealth))
+            Dim lNeeded As Long
+            lNeeded = CLng(Fix(dHstar / arrTroops(iIndex).dHealth))
+            If lNeeded < arrBase(arrTroops(iIndex).iRow) Then
+                arrUnits(arrTroops(iIndex).iRow) = arrBase(arrTroops(iIndex).iRow)
+            Else
+                arrUnits(arrTroops(iIndex).iRow) = lNeeded
+            End If
         Else
-            arrUnits(arrTroops(iIndex).iRow) = 0
+            arrUnits(arrTroops(iIndex).iRow) = arrBase(arrTroops(iIndex).iRow)
         End If
     Next iIndex
 End Sub
@@ -98,11 +108,28 @@ Private Function ComputeUsedCost(arrTroops() As tTroop, iCount As Long, arrUnits
 End Function
 
 ' ============================================
+' Helper: fetch troop cost by row
+' ============================================
+Private Function GetTroopCost(arrTroops() As tTroop, iCount As Long, lRow As Long) As Double
+    Dim iIndex As Long
+    For iIndex = 1 To iCount
+        If arrTroops(iIndex).iRow = lRow Then
+            GetTroopCost = arrTroops(iIndex).dCost
+            Exit Function
+        End If
+    Next iIndex
+End Function
+
+' ============================================
 ' Helper: enforce health priority (high vs low group)
 ' ============================================
 Private Sub EnforcePriority(arrHigh() As tTroop, ByVal iHigh As Long, _
                             arrLow() As tTroop, ByVal iLow As Long, _
-                            arrUnits() As Long, Optional ByVal lStep As Long = 1)
+                            arrUnits() As Long, arrBase() As Long, _
+                            Optional ByVal lStep As Long = 1, _
+                            Optional ByVal vResource As Variant, _
+                            Optional ByVal iResourceCount As Long = 0, _
+                            Optional ByVal dResourceCap As Double = -1)
 
     Dim iIndex As Long
     Dim dTotal As Double
@@ -113,10 +140,28 @@ Private Sub EnforcePriority(arrHigh() As tTroop, ByVal iHigh As Long, _
     Dim lHighRow As Long
     Dim bHasHigh As Boolean
     Dim lDecrement As Long
+    Dim lIncrement As Long
+    Dim dCostPerUnit As Double
+    Dim dCurrentUsage As Double
+    Dim lMaxAdd As Long
+    Dim arrResource() As tTroop
+    Dim bUseResource As Boolean
     Dim lGuard As Long
 
     If iHigh = 0 Or iLow = 0 Then Exit Sub
     If lStep < 1 Then lStep = 1
+
+    If Not IsMissing(vResource) Then
+        If Not IsEmpty(vResource) Then
+            On Error Resume Next
+            arrResource = vResource
+            If Err.Number = 0 Then
+                bUseResource = (iResourceCount > 0 And dResourceCap >= 0)
+            End If
+            Err.Clear
+            On Error GoTo 0
+        End If
+    End If
 
     For lGuard = 1 To 10000
         bHasHigh = False
@@ -154,30 +199,62 @@ Private Sub EnforcePriority(arrHigh() As tTroop, ByVal iHigh As Long, _
         If lTargetRow = 0 Then Exit Sub
         If dMaxLow < dMinHigh - 0.0000001 Then Exit For
 
-        If arrUnits(lTargetRow) <= 1 Then
+        If arrUnits(lTargetRow) <= arrBase(lTargetRow) Then
             If lHighRow <> 0 Then
                 If lStep > 1 Then
-                    arrUnits(lHighRow) = arrUnits(lHighRow) + lStep
+                    lIncrement = lStep
                 Else
-                    arrUnits(lHighRow) = arrUnits(lHighRow) + 1
+                    lIncrement = 1
                 End If
+                If bUseResource Then
+                    dCostPerUnit = GetTroopCost(arrResource, iResourceCount, lHighRow)
+                    If dCostPerUnit > 0 Then
+                        dCurrentUsage = ComputeUsedCost(arrResource, iResourceCount, arrUnits)
+                        lMaxAdd = CLng(Fix((dResourceCap - dCurrentUsage) / dCostPerUnit))
+                        If lMaxAdd < 1 Then GoTo ContinueLoop
+                        If lStep > 1 Then
+                            lIncrement = (lMaxAdd \ lStep) * lStep
+                            If lIncrement = 0 Then GoTo ContinueLoop
+                        Else
+                            If lMaxAdd < lIncrement Then lIncrement = lMaxAdd
+                            If lIncrement <= 0 Then GoTo ContinueLoop
+                        End If
+                    End If
+                End If
+                arrUnits(lHighRow) = arrUnits(lHighRow) + lIncrement
             End If
             GoTo ContinueLoop
         End If
 
-        If lStep > 1 And arrUnits(lTargetRow) > lStep Then
+        If lStep > 1 And arrUnits(lTargetRow) - lStep >= arrBase(lTargetRow) Then
             lDecrement = lStep
         Else
             lDecrement = 1
         End If
 
-        If arrUnits(lTargetRow) - lDecrement < 1 Then
+        If arrUnits(lTargetRow) - lDecrement < arrBase(lTargetRow) Then
             If lHighRow <> 0 Then
                 If lStep > 1 Then
-                    arrUnits(lHighRow) = arrUnits(lHighRow) + lStep
+                    lIncrement = lStep
                 Else
-                    arrUnits(lHighRow) = arrUnits(lHighRow) + 1
+                    lIncrement = 1
                 End If
+                If bUseResource Then
+                    dCostPerUnit = GetTroopCost(arrResource, iResourceCount, lHighRow)
+                    If dCostPerUnit > 0 Then
+                        dCurrentUsage = ComputeUsedCost(arrResource, iResourceCount, arrUnits)
+                        lMaxAdd = CLng(Fix((dResourceCap - dCurrentUsage) / dCostPerUnit))
+                        If lMaxAdd < 1 Then GoTo ContinueLoop
+                        If lStep > 1 Then
+                            lIncrement = (lMaxAdd \ lStep) * lStep
+                            If lIncrement = 0 Then GoTo ContinueLoop
+                        Else
+                            If lMaxAdd < lIncrement Then lIncrement = lMaxAdd
+                            If lIncrement <= 0 Then GoTo ContinueLoop
+                        End If
+                    End If
+                End If
+                arrUnits(lHighRow) = arrUnits(lHighRow) + lIncrement
             End If
             GoTo ContinueLoop
         End If
@@ -203,8 +280,11 @@ Public Sub RunLevelingCapCeilingEven10_Fixed()
     Dim arrLeadership() As tTroop
     Dim iSpec As Long, iGuard As Long, iMonster As Long, iMerc As Long
     Dim iLeadership As Long
+    Dim arrBase() As Long
 
     Dim dHLeadership As Double, dHMonster As Double, dHMerc As Double
+    Dim dBaseLeadership As Double, dBaseDominance As Double, dBaseAuthority As Double
+    Dim dLcapAvail As Double, dDcapAvail As Double, dAcapAvail As Double
 
     Dim dUsedL_pre As Double, dUsedD_pre As Double, dUsedA_pre As Double
     Dim dUsedL_post As Double, dUsedD_post As Double, dUsedA_post As Double
@@ -221,6 +301,7 @@ Public Sub RunLevelingCapCeilingEven10_Fixed()
 
     iRows = loTable.ListRows.Count
     ReDim arrUnits(1 To iRows)
+    ReDim arrBase(1 To iRows)
 
     iSpec = 0: iGuard = 0: iMonster = 0: iMerc = 0
 
@@ -243,6 +324,12 @@ Public Sub RunLevelingCapCeilingEven10_Fixed()
         dLc = NzD(rRow.Range(1, loTable.ListColumns("Leadership").Index).Value)
         dDc = NzD(rRow.Range(1, loTable.ListColumns("Dominance").Index).Value)
         dAc = NzD(rRow.Range(1, loTable.ListColumns("Authority").Index).Value)
+
+        If dHealth > 0 And (dLc > 0 Or dDc > 0 Or dAc > 0) Then
+            arrBase(iIndex) = 1
+        Else
+            arrBase(iIndex) = 0
+        End If
 
         sType = UCase$(NzS(rRow.Range(1, iTypeCol).Value))
         bIsMerc = (UCase$(NzS(rRow.Range(1, iMercCol).Value)) = "Y")
@@ -312,24 +399,40 @@ Public Sub RunLevelingCapCeilingEven10_Fixed()
         End If
     Next iIndex
 
+    For iIndex = 1 To iRows
+        arrUnits(iIndex) = arrBase(iIndex)
+        If arrBase(iIndex) > 0 Then
+            dBaseLeadership = dBaseLeadership + arrBase(iIndex) * NzD(loTable.ListRows(iIndex).Range(1, loTable.ListColumns("Leadership").Index).Value)
+            dBaseDominance = dBaseDominance + arrBase(iIndex) * NzD(loTable.ListRows(iIndex).Range(1, loTable.ListColumns("Dominance").Index).Value)
+            dBaseAuthority = dBaseAuthority + arrBase(iIndex) * NzD(loTable.ListRows(iIndex).Range(1, loTable.ListColumns("Authority").Index).Value)
+        End If
+    Next iIndex
+
+    dLcapAvail = dLcap - dBaseLeadership
+    If dLcapAvail < 0 Then dLcapAvail = 0
+    dDcapAvail = dDcap - dBaseDominance
+    If dDcapAvail < 0 Then dDcapAvail = 0
+    dAcapAvail = dAcap - dBaseAuthority
+    If dAcapAvail < 0 Then dAcapAvail = 0
+
     If iLeadership > 0 Then
-        dHLeadership = FindLeadershipH(arrLeadership, iLeadership, dLcap)
-        AllocateLeadership arrLeadership, iLeadership, dLcap, arrUnits, dHLeadership
+        dHLeadership = FindLeadershipH(arrLeadership, arrBase, iLeadership, dLcapAvail)
+        AllocateLeadership arrLeadership, arrBase, iLeadership, arrUnits, dHLeadership
     End If
 
     If iMonster > 0 Then
-        dHMonster = FindLeadershipH(arrMonster, iMonster, dDcap)
-        AllocateLeadership arrMonster, iMonster, dDcap, arrUnits, dHMonster
+        dHMonster = FindLeadershipH(arrMonster, arrBase, iMonster, dDcapAvail)
+        AllocateLeadership arrMonster, arrBase, iMonster, arrUnits, dHMonster
     End If
 
     If iMerc > 0 And dAcap > 0 Then
-        dHMerc = FindLeadershipH(arrMerc, iMerc, dAcap)
-        AllocateLeadership arrMerc, iMerc, dAcap, arrUnits, dHMerc
+        dHMerc = FindLeadershipH(arrMerc, arrBase, iMerc, dAcapAvail)
+        AllocateLeadership arrMerc, arrBase, iMerc, arrUnits, dHMerc
     End If
 
-    EnforcePriority arrSpec, iSpec, arrGuard, iGuard, arrUnits, 1
-    EnforcePriority arrGuard, iGuard, arrMonster, iMonster, arrUnits, 1
-    EnforcePriority arrMonster, iMonster, arrMerc, iMerc, arrUnits, 1
+    EnforcePriority arrSpec, iSpec, arrGuard, iGuard, arrUnits, arrBase, 1, arrLeadership, iLeadership, dLcap
+    EnforcePriority arrGuard, iGuard, arrMonster, iMonster, arrUnits, arrBase, 1, arrLeadership, iLeadership, dLcap
+    EnforcePriority arrMonster, iMonster, arrMerc, iMerc, arrUnits, arrBase, 1, arrMonster, iMonster, dDcap
 
     For iIndex = 1 To iRows
         dUsedL_pre = dUsedL_pre + arrUnits(iIndex) * NzD(loTable.ListRows(iIndex).Range(1, loTable.ListColumns("Leadership").Index).Value)
@@ -352,14 +455,10 @@ Public Sub RunLevelingCapCeilingEven10_Fixed()
             End If
         Next iIndex
 
-        EnforcePriority arrSpec, iSpec, arrGuard, iGuard, arrUnits, 10
-        EnforcePriority arrGuard, iGuard, arrMonster, iMonster, arrUnits, 10
-        EnforcePriority arrMonster, iMonster, arrMerc, iMerc, arrUnits, 10
+        EnforcePriority arrSpec, iSpec, arrGuard, iGuard, arrUnits, arrBase, 10, arrLeadership, iLeadership, dLcap
+        EnforcePriority arrGuard, iGuard, arrMonster, iMonster, arrUnits, arrBase, 10, arrLeadership, iLeadership, dLcap
+        EnforcePriority arrMonster, iMonster, arrMerc, iMerc, arrUnits, arrBase, 10, arrMonster, iMonster, dDcap
     End If
-
-    For iIndex = 1 To iRows
-        If arrUnits(iIndex) < 1 Then arrUnits(iIndex) = 1
-    Next iIndex
 
     For iIndex = 1 To iRows
         dUsedL_post = dUsedL_post + arrUnits(iIndex) * NzD(loTable.ListRows(iIndex).Range(1, loTable.ListColumns("Leadership").Index).Value)
