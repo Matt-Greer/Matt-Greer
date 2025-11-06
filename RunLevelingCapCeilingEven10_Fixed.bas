@@ -151,16 +151,20 @@ Private Sub EnforcePriority(arrHigh() As tTroop, ByVal iHigh As Long, _
         If lTargetRow = 0 Then Exit Sub
         If dMaxLow < dMinHigh - 0.0000001 Then Exit For
 
-        If arrUnits(lTargetRow) <= 0 Then Exit Sub
+        If arrUnits(lTargetRow) <= 1 Then Exit For
 
-        If lStep > 1 And arrUnits(lTargetRow) >= lStep Then
+        If lStep > 1 And arrUnits(lTargetRow) > lStep Then
             lDecrement = lStep
         Else
             lDecrement = 1
         End If
 
+        If arrUnits(lTargetRow) - lDecrement < 1 Then
+            lDecrement = arrUnits(lTargetRow) - 1
+        End If
+        If lDecrement <= 0 Then Exit For
+
         arrUnits(lTargetRow) = arrUnits(lTargetRow) - lDecrement
-        If arrUnits(lTargetRow) < 0 Then arrUnits(lTargetRow) = 0
     Next lGuard
 End Sub
 
@@ -317,12 +321,12 @@ Public Sub RunLevelingCapCeilingEven10_Fixed()
 
     If bApplyRounding Then
         For iIndex = 1 To iRows
-            If arrUnits(iIndex) > 0 Then
+            If arrUnits(iIndex) <= 0 Then
+                arrUnits(iIndex) = 1
+            Else
                 Dim iRounded As Long
                 iRounded = (arrUnits(iIndex) \ 10) * 10
-                If iRounded < 10 Then
-                    arrUnits(iIndex) = 10
-                Else
+                If iRounded >= 10 Then
                     arrUnits(iIndex) = iRounded
                 End If
             End If
@@ -332,6 +336,10 @@ Public Sub RunLevelingCapCeilingEven10_Fixed()
         EnforcePriority arrGuard, iGuard, arrMonster, iMonster, arrUnits, 10
         EnforcePriority arrMonster, iMonster, arrMerc, iMerc, arrUnits, 10
     End If
+
+    For iIndex = 1 To iRows
+        If arrUnits(iIndex) < 1 Then arrUnits(iIndex) = 1
+    Next iIndex
 
     For iIndex = 1 To iRows
         dUsedL_post = dUsedL_post + arrUnits(iIndex) * NzD(loTable.ListRows(iIndex).Range(1, loTable.ListColumns("Leadership").Index).Value)
