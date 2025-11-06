@@ -110,6 +110,7 @@ Private Sub EnforcePriority(arrHigh() As tTroop, ByVal iHigh As Long, _
     Dim dMinHigh As Double
     Dim dMaxLow As Double
     Dim lTargetRow As Long
+    Dim lHighRow As Long
     Dim bHasHigh As Boolean
     Dim lDecrement As Long
     Dim lGuard As Long
@@ -120,6 +121,7 @@ Private Sub EnforcePriority(arrHigh() As tTroop, ByVal iHigh As Long, _
     For lGuard = 1 To 10000
         bHasHigh = False
         dMinHigh = 0
+        lHighRow = 0
 
         For iIndex = 1 To iHigh
             lUnits = arrUnits(arrHigh(iIndex).iRow)
@@ -127,6 +129,7 @@ Private Sub EnforcePriority(arrHigh() As tTroop, ByVal iHigh As Long, _
                 dTotal = lUnits * arrHigh(iIndex).dHealth
                 If Not bHasHigh Or dTotal < dMinHigh Then
                     dMinHigh = dTotal
+                    lHighRow = arrHigh(iIndex).iRow
                 End If
                 bHasHigh = True
             End If
@@ -151,7 +154,16 @@ Private Sub EnforcePriority(arrHigh() As tTroop, ByVal iHigh As Long, _
         If lTargetRow = 0 Then Exit Sub
         If dMaxLow < dMinHigh - 0.0000001 Then Exit For
 
-        If arrUnits(lTargetRow) <= 1 Then Exit For
+        If arrUnits(lTargetRow) <= 1 Then
+            If lHighRow <> 0 Then
+                If lStep > 1 Then
+                    arrUnits(lHighRow) = arrUnits(lHighRow) + lStep
+                Else
+                    arrUnits(lHighRow) = arrUnits(lHighRow) + 1
+                End If
+            End If
+            GoTo ContinueLoop
+        End If
 
         If lStep > 1 And arrUnits(lTargetRow) > lStep Then
             lDecrement = lStep
@@ -160,11 +172,19 @@ Private Sub EnforcePriority(arrHigh() As tTroop, ByVal iHigh As Long, _
         End If
 
         If arrUnits(lTargetRow) - lDecrement < 1 Then
-            lDecrement = arrUnits(lTargetRow) - 1
+            If lHighRow <> 0 Then
+                If lStep > 1 Then
+                    arrUnits(lHighRow) = arrUnits(lHighRow) + lStep
+                Else
+                    arrUnits(lHighRow) = arrUnits(lHighRow) + 1
+                End If
+            End If
+            GoTo ContinueLoop
         End If
         If lDecrement <= 0 Then Exit For
 
         arrUnits(lTargetRow) = arrUnits(lTargetRow) - lDecrement
+ContinueLoop:
     Next lGuard
 End Sub
 
