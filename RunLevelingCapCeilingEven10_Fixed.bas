@@ -136,8 +136,12 @@ Private Sub EnsureHigherBeatsLower(arrHigh() As tTroop, ByVal iHigh As Long, _
     Dim lAffordable As Long
     Dim lRowHigh As Long
     Dim lGuard As Long
+    Dim arrIgnored() As Boolean
 
     If iHigh = 0 Or iLow = 0 Or dCap <= 0 Then Exit Sub
+    If iLow > 0 Then
+        ReDim arrIgnored(1 To iLow)
+    End If
 
     For lGuard = 1 To 10000
         iHighIdx = 0: iLowIdx = 0
@@ -155,19 +159,24 @@ Private Sub EnsureHigherBeatsLower(arrHigh() As tTroop, ByVal iHigh As Long, _
         Next iIndex
 
         For iIndex = 1 To iLow
-            lUnits = arrUnits(arrLow(iIndex).iRow)
-            If lUnits > 0 And arrLow(iIndex).dHealth > 0 Then
-                dTotal = lUnits * arrLow(iIndex).dHealth
-                If dTotal > dMaxLow Then
-                    dMaxLow = dTotal
-                    iLowIdx = iIndex
+            If Not arrIgnored(iIndex) Then
+                lUnits = arrUnits(arrLow(iIndex).iRow)
+                If lUnits > 0 And arrLow(iIndex).dHealth > 0 Then
+                    dTotal = lUnits * arrLow(iIndex).dHealth
+                    If dTotal > dMaxLow Then
+                        dMaxLow = dTotal
+                        iLowIdx = iIndex
+                    End If
                 End If
             End If
         Next iIndex
 
         If iHighIdx = 0 Or iLowIdx = 0 Then Exit For
         If dMinHigh > dMaxLow + 0.0001 Then Exit For
-        If arrHigh(iHighIdx).dCost <= 0 Then Exit For
+        If arrHigh(iHighIdx).dCost <= 0 Then
+            arrIgnored(iLowIdx) = True
+            GoTo ContinueEnsure
+        End If
 
         lRowHigh = arrHigh(iHighIdx).iRow
         lUnits = arrUnits(lRowHigh)
@@ -179,29 +188,26 @@ Private Sub EnsureHigherBeatsLower(arrHigh() As tTroop, ByVal iHigh As Long, _
 
         dUsage = ComputeUsedCost(arrHigh, iHigh, arrUnits)
         dRemain = dCap - dUsage
-        If dRemain <= 0 Then Exit For
+        If dRemain <= 0 Then
+            arrIgnored(iLowIdx) = True
+            GoTo ContinueEnsure
+        End If
 
         lAffordable = CLng(Fix(dRemain / arrHigh(iHighIdx).dCost))
-        If lAffordable <= 0 Then Exit For
+        If lAffordable <= 0 Then
+            arrIgnored(iLowIdx) = True
+            GoTo ContinueEnsure
+        End If
         If lAdd > lAffordable Then lAdd = lAffordable
-        If lAdd <= 0 Then Exit For
+        If lAdd <= 0 Then
+            arrIgnored(iLowIdx) = True
+            GoTo ContinueEnsure
+        End If
 
         arrUnits(lRowHigh) = arrUnits(lRowHigh) + lAdd
+ContinueEnsure:
     Next lGuard
 End Sub
-
-' ============================================
-' Helper: fetch troop cost by row
-' ============================================
-Private Function GetTroopCost(arrTroops() As tTroop, iCount As Long, lRow As Long) As Double
-    Dim iIndex As Long
-    For iIndex = 1 To iCount
-        If arrTroops(iIndex).iRow = lRow Then
-            GetTroopCost = arrTroops(iIndex).dCost
-            Exit Function
-        End If
-    Next iIndex
-End Function
 
 ' ============================================
 ' Helper: enforce health priority (high vs low group)
@@ -227,25 +233,33 @@ Private Sub EnforcePriority(arrHigh() As tTroop, ByVal iHigh As Long, _
     Dim dCurrentUsage As Double
     Dim lMaxAdd As Long
     Dim lGuard As Long
+    Dim arrIgnored() As Boolean
+    Dim lLowIdx As Long
+    Dim lHighIdx As Long
 
     If iHigh = 0 Or iLow = 0 Then Exit Sub
     If lStep < 1 Then lStep = 1
     If Not bUseResource Or iResourceCount <= 0 Or dResourceCap < 0 Then
         bUseResource = False
     End If
+    If iLow > 0 Then
+        ReDim arrIgnored(1 To iLow)
+    End If
 
     For lGuard = 1 To 10000
         bHasHigh = False
         dMinHigh = 0
         lHighRow = 0
+        lHighIdx = 0
 
         For iIndex = 1 To iHigh
             lUnits = arrUnits(arrHigh(iIndex).iRow)
-            If lUnits > 0 Then
+            If lUnits > 0 And arrHigh(iIndex).dHealth > 0 Then
                 dTotal = lUnits * arrHigh(iIndex).dHealth
                 If Not bHasHigh Or dTotal < dMinHigh Then
                     dMinHigh = dTotal
                     lHighRow = arrHigh(iIndex).iRow
+                    lHighIdx = iIndex
                 End If
                 bHasHigh = True
             End If
@@ -255,14 +269,18 @@ Private Sub EnforcePriority(arrHigh() As tTroop, ByVal iHigh As Long, _
 
         dMaxLow = 0
         lTargetRow = 0
+        lLowIdx = 0
 
         For iIndex = 1 To iLow
-            lUnits = arrUnits(arrLow(iIndex).iRow)
-            If lUnits > 0 Then
-                dTotal = lUnits * arrLow(iIndex).dHealth
-                If dTotal > dMaxLow Then
-                    dMaxLow = dTotal
-                    lTargetRow = arrLow(iIndex).iRow
+            If Not arrIgnored(iIndex) Then
+                lUnits = arrUnits(arrLow(iIndex).iRow)
+                If lUnits > 0 And arrLow(iIndex).dHealth > 0 Then
+                    dTotal = lUnits * arrLow(iIndex).dHealth
+                    If dTotal > dMaxLow Then
+                        dMaxLow = dTotal
+                        lTargetRow = arrLow(iIndex).iRow
+                        lLowIdx = iIndex
+                    End If
                 End If
             End If
         Next iIndex
@@ -271,6 +289,8 @@ Private Sub EnforcePriority(arrHigh() As tTroop, ByVal iHigh As Long, _
         If dMaxLow < dMinHigh - 0.0000001 Then Exit For
 
         If arrUnits(lTargetRow) <= arrBase(lTargetRow) Then
+            Dim bBoosted As Boolean
+            bBoosted = False
             If lHighRow <> 0 Then
                 If lStep > 1 Then
                     lIncrement = lStep
@@ -278,21 +298,25 @@ Private Sub EnforcePriority(arrHigh() As tTroop, ByVal iHigh As Long, _
                     lIncrement = 1
                 End If
                 If bUseResource Then
-                    dCostPerUnit = GetTroopCost(arrResource, iResourceCount, lHighRow)
+                    dCostPerUnit = arrHigh(lHighIdx).dCost
                     If dCostPerUnit > 0 Then
                         dCurrentUsage = ComputeUsedCost(arrResource, iResourceCount, arrUnits)
                         lMaxAdd = CLng(Fix((dResourceCap - dCurrentUsage) / dCostPerUnit))
-                        If lMaxAdd < 1 Then GoTo ContinueLoop
+                        If lMaxAdd < 0 Then lMaxAdd = 0
                         If lStep > 1 Then
-                            lIncrement = (lMaxAdd \ lStep) * lStep
-                            If lIncrement = 0 Then GoTo ContinueLoop
+                            If lIncrement > lMaxAdd Then lIncrement = (lMaxAdd \ lStep) * lStep
                         Else
-                            If lMaxAdd < lIncrement Then lIncrement = lMaxAdd
-                            If lIncrement <= 0 Then GoTo ContinueLoop
+                            If lIncrement > lMaxAdd Then lIncrement = lMaxAdd
                         End If
                     End If
                 End If
-                arrUnits(lHighRow) = arrUnits(lHighRow) + lIncrement
+                If lIncrement > 0 Then
+                    arrUnits(lHighRow) = arrUnits(lHighRow) + lIncrement
+                    bBoosted = True
+                End If
+            End If
+            If Not bBoosted Then
+                If lLowIdx > 0 Then arrIgnored(lLowIdx) = True
             End If
             GoTo ContinueLoop
         End If
@@ -304,6 +328,8 @@ Private Sub EnforcePriority(arrHigh() As tTroop, ByVal iHigh As Long, _
         End If
 
         If arrUnits(lTargetRow) - lDecrement < arrBase(lTargetRow) Then
+            Dim bRaised As Boolean
+            bRaised = False
             If lHighRow <> 0 Then
                 If lStep > 1 Then
                     lIncrement = lStep
@@ -311,21 +337,25 @@ Private Sub EnforcePriority(arrHigh() As tTroop, ByVal iHigh As Long, _
                     lIncrement = 1
                 End If
                 If bUseResource Then
-                    dCostPerUnit = GetTroopCost(arrResource, iResourceCount, lHighRow)
+                    dCostPerUnit = arrHigh(lHighIdx).dCost
                     If dCostPerUnit > 0 Then
                         dCurrentUsage = ComputeUsedCost(arrResource, iResourceCount, arrUnits)
                         lMaxAdd = CLng(Fix((dResourceCap - dCurrentUsage) / dCostPerUnit))
-                        If lMaxAdd < 1 Then GoTo ContinueLoop
+                        If lMaxAdd < 0 Then lMaxAdd = 0
                         If lStep > 1 Then
-                            lIncrement = (lMaxAdd \ lStep) * lStep
-                            If lIncrement = 0 Then GoTo ContinueLoop
+                            If lIncrement > lMaxAdd Then lIncrement = (lMaxAdd \ lStep) * lStep
                         Else
-                            If lMaxAdd < lIncrement Then lIncrement = lMaxAdd
-                            If lIncrement <= 0 Then GoTo ContinueLoop
+                            If lIncrement > lMaxAdd Then lIncrement = lMaxAdd
                         End If
                     End If
                 End If
-                arrUnits(lHighRow) = arrUnits(lHighRow) + lIncrement
+                If lIncrement > 0 Then
+                    arrUnits(lHighRow) = arrUnits(lHighRow) + lIncrement
+                    bRaised = True
+                End If
+            End If
+            If Not bRaised Then
+                If lLowIdx > 0 Then arrIgnored(lLowIdx) = True
             End If
             GoTo ContinueLoop
         End If
