@@ -126,10 +126,9 @@ End Function
 Private Sub EnforcePriority(arrHigh() As tTroop, ByVal iHigh As Long, _
                             arrLow() As tTroop, ByVal iLow As Long, _
                             arrUnits() As Long, arrBase() As Long, _
-                            Optional ByVal lStep As Long = 1, _
-                            Optional ByVal vResource As Variant, _
-                            Optional ByVal iResourceCount As Long = 0, _
-                            Optional ByVal dResourceCap As Double = -1)
+                            ByVal lStep As Long, _
+                            arrResource() As tTroop, ByVal iResourceCount As Long, _
+                            ByVal dResourceCap As Double, ByVal bUseResource As Boolean)
 
     Dim iIndex As Long
     Dim dTotal As Double
@@ -144,23 +143,12 @@ Private Sub EnforcePriority(arrHigh() As tTroop, ByVal iHigh As Long, _
     Dim dCostPerUnit As Double
     Dim dCurrentUsage As Double
     Dim lMaxAdd As Long
-    Dim arrResource() As tTroop
-    Dim bUseResource As Boolean
     Dim lGuard As Long
 
     If iHigh = 0 Or iLow = 0 Then Exit Sub
     If lStep < 1 Then lStep = 1
-
-    If Not IsMissing(vResource) Then
-        If Not IsEmpty(vResource) Then
-            On Error Resume Next
-            arrResource = vResource
-            If Err.Number = 0 Then
-                bUseResource = (iResourceCount > 0 And dResourceCap >= 0)
-            End If
-            Err.Clear
-            On Error GoTo 0
-        End If
+    If Not bUseResource Or iResourceCount <= 0 Or dResourceCap < 0 Then
+        bUseResource = False
     End If
 
     For lGuard = 1 To 10000
@@ -430,9 +418,9 @@ Public Sub RunLevelingCapCeilingEven10_Fixed()
         AllocateLeadership arrMerc, arrBase, iMerc, arrUnits, dHMerc
     End If
 
-    EnforcePriority arrSpec, iSpec, arrGuard, iGuard, arrUnits, arrBase, 1, arrLeadership, iLeadership, dLcap
-    EnforcePriority arrGuard, iGuard, arrMonster, iMonster, arrUnits, arrBase, 1, arrLeadership, iLeadership, dLcap
-    EnforcePriority arrMonster, iMonster, arrMerc, iMerc, arrUnits, arrBase, 1, arrMonster, iMonster, dDcap
+    EnforcePriority arrSpec, iSpec, arrGuard, iGuard, arrUnits, arrBase, 1, arrLeadership, iLeadership, dLcap, True
+    EnforcePriority arrGuard, iGuard, arrMonster, iMonster, arrUnits, arrBase, 1, arrLeadership, iLeadership, dLcap, True
+    EnforcePriority arrMonster, iMonster, arrMerc, iMerc, arrUnits, arrBase, 1, arrMonster, iMonster, dDcap, True
 
     For iIndex = 1 To iRows
         dUsedL_pre = dUsedL_pre + arrUnits(iIndex) * NzD(loTable.ListRows(iIndex).Range(1, loTable.ListColumns("Leadership").Index).Value)
@@ -455,9 +443,9 @@ Public Sub RunLevelingCapCeilingEven10_Fixed()
             End If
         Next iIndex
 
-        EnforcePriority arrSpec, iSpec, arrGuard, iGuard, arrUnits, arrBase, 10, arrLeadership, iLeadership, dLcap
-        EnforcePriority arrGuard, iGuard, arrMonster, iMonster, arrUnits, arrBase, 10, arrLeadership, iLeadership, dLcap
-        EnforcePriority arrMonster, iMonster, arrMerc, iMerc, arrUnits, arrBase, 10, arrMonster, iMonster, dDcap
+        EnforcePriority arrSpec, iSpec, arrGuard, iGuard, arrUnits, arrBase, 10, arrLeadership, iLeadership, dLcap, True
+        EnforcePriority arrGuard, iGuard, arrMonster, iMonster, arrUnits, arrBase, 10, arrLeadership, iLeadership, dLcap, True
+        EnforcePriority arrMonster, iMonster, arrMerc, iMerc, arrUnits, arrBase, 10, arrMonster, iMonster, dDcap, True
     End If
 
     For iIndex = 1 To iRows
