@@ -108,6 +108,89 @@ Private Function ComputeUsedCost(arrTroops() As tTroop, iCount As Long, arrUnits
 End Function
 
 ' ============================================
+' Helper: ceiling division for positive numbers
+' ============================================
+Private Function CeilToLong(ByVal dValue As Double, ByVal dStep As Double) As Long
+    If dStep <= 0 Then Exit Function
+    CeilToLong = CLng(-Int(-(dValue / dStep)))
+    If CeilToLong < 0 Then CeilToLong = 0
+End Function
+
+' ============================================
+' Helper: increase higher-priority troops until they exceed lower tier health
+' ============================================
+Private Sub EnsureHigherBeatsLower(arrHigh() As tTroop, ByVal iHigh As Long, _
+                                   arrLow() As tTroop, ByVal iLow As Long, _
+                                   arrUnits() As Long, arrBase() As Long, _
+                                   ByVal dCap As Double)
+
+    Dim iIndex As Long
+    Dim iHighIdx As Long, iLowIdx As Long
+    Dim dMinHigh As Double, dMaxLow As Double
+    Dim lUnits As Long
+    Dim dTotal As Double
+    Dim lNeeded As Long
+    Dim lAdd As Long
+    Dim dUsage As Double
+    Dim dRemain As Double
+    Dim lAffordable As Long
+    Dim lRowHigh As Long
+    Dim lGuard As Long
+
+    If iHigh = 0 Or iLow = 0 Or dCap <= 0 Then Exit Sub
+
+    For lGuard = 1 To 10000
+        iHighIdx = 0: iLowIdx = 0
+        dMinHigh = 0: dMaxLow = 0
+
+        For iIndex = 1 To iHigh
+            lUnits = arrUnits(arrHigh(iIndex).iRow)
+            If lUnits > 0 And arrHigh(iIndex).dHealth > 0 Then
+                dTotal = lUnits * arrHigh(iIndex).dHealth
+                If iHighIdx = 0 Or dTotal < dMinHigh Then
+                    dMinHigh = dTotal
+                    iHighIdx = iIndex
+                End If
+            End If
+        Next iIndex
+
+        For iIndex = 1 To iLow
+            lUnits = arrUnits(arrLow(iIndex).iRow)
+            If lUnits > 0 And arrLow(iIndex).dHealth > 0 Then
+                dTotal = lUnits * arrLow(iIndex).dHealth
+                If dTotal > dMaxLow Then
+                    dMaxLow = dTotal
+                    iLowIdx = iIndex
+                End If
+            End If
+        Next iIndex
+
+        If iHighIdx = 0 Or iLowIdx = 0 Then Exit For
+        If dMinHigh > dMaxLow + 0.0001 Then Exit For
+        If arrHigh(iHighIdx).dCost <= 0 Then Exit For
+
+        lRowHigh = arrHigh(iHighIdx).iRow
+        lUnits = arrUnits(lRowHigh)
+        lNeeded = CeilToLong(dMaxLow + 0.0001, arrHigh(iHighIdx).dHealth)
+        If lNeeded < arrBase(lRowHigh) Then lNeeded = arrBase(lRowHigh)
+        If lNeeded <= lUnits Then lNeeded = lUnits + 1
+        lAdd = lNeeded - lUnits
+        If lAdd <= 0 Then lAdd = 1
+
+        dUsage = ComputeUsedCost(arrHigh, iHigh, arrUnits)
+        dRemain = dCap - dUsage
+        If dRemain <= 0 Then Exit For
+
+        lAffordable = CLng(Fix(dRemain / arrHigh(iHighIdx).dCost))
+        If lAffordable <= 0 Then Exit For
+        If lAdd > lAffordable Then lAdd = lAffordable
+        If lAdd <= 0 Then Exit For
+
+        arrUnits(lRowHigh) = arrUnits(lRowHigh) + lAdd
+    Next lGuard
+End Sub
+
+' ============================================
 ' Helper: fetch troop cost by row
 ' ============================================
 Private Function GetTroopCost(arrTroops() As tTroop, iCount As Long, lRow As Long) As Double
@@ -421,6 +504,7 @@ Public Sub RunLevelingCapCeilingEven10_Fixed()
     EnforcePriority arrSpec, iSpec, arrGuard, iGuard, arrUnits, arrBase, 1, arrLeadership, iLeadership, dLcap, True
     EnforcePriority arrGuard, iGuard, arrMonster, iMonster, arrUnits, arrBase, 1, arrLeadership, iLeadership, dLcap, True
     EnforcePriority arrMonster, iMonster, arrMerc, iMerc, arrUnits, arrBase, 1, arrMonster, iMonster, dDcap, True
+    EnsureHigherBeatsLower arrMonster, iMonster, arrMerc, iMerc, arrUnits, arrBase, dDcap
 
     For iIndex = 1 To iRows
         dUsedL_pre = dUsedL_pre + arrUnits(iIndex) * NzD(loTable.ListRows(iIndex).Range(1, loTable.ListColumns("Leadership").Index).Value)
@@ -446,6 +530,7 @@ Public Sub RunLevelingCapCeilingEven10_Fixed()
         EnforcePriority arrSpec, iSpec, arrGuard, iGuard, arrUnits, arrBase, 10, arrLeadership, iLeadership, dLcap, True
         EnforcePriority arrGuard, iGuard, arrMonster, iMonster, arrUnits, arrBase, 10, arrLeadership, iLeadership, dLcap, True
         EnforcePriority arrMonster, iMonster, arrMerc, iMerc, arrUnits, arrBase, 10, arrMonster, iMonster, dDcap, True
+        EnsureHigherBeatsLower arrMonster, iMonster, arrMerc, iMerc, arrUnits, arrBase, dDcap
     End If
 
     For iIndex = 1 To iRows
